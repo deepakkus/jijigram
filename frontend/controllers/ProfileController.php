@@ -56,12 +56,12 @@ class ProfileController extends Controller
                         'roles' => ['@'],
                     ],
 					[
-                        'actions' => ['my-channels'],
+                        'actions' => ['my-channels', 'my-post'],
                         'allow' => true,
                         'roles' => ['*'],
                     ],
 					[
-                        'actions' => ['my-channels'],
+                        'actions' => ['my-channels', 'my-post'],
                         'allow' => true,
                         'roles' => ['@'],
                     ],
@@ -281,6 +281,94 @@ class ProfileController extends Controller
 				'dataProviders' => $dataProviders
             ]);
 	}
+	
+	public function actionMyPost()
+    { 
+		if(Yii::$app->user->identity->usertype == 'L') {
+		 $model = new Post();
+		$id = $model->userId = Yii::$app->user->identity->id;
+		
+		 $model -> addedon = date('Y-m-d H:i:s');
+	   $dataProviders = new ActiveDataProvider([
+				'query' => Post::find()
+				  ->where(['userId' => $id]),
+				'sort'=> ['defaultOrder' => ['id'=>SORT_DESC]],
+				 'pagination' => [
+					'pageSize' => 10,
+				],
+			]);   
+	 $dataProviders->getCount();
+	 $dataReader = $dataProviders->getModels();
+   $request = \Yii::$app->getRequest();
+    if ($request->isPost && $model->load($request->post()) && $model->validate()) 
+	{
+ 			$image= UploadedFile::getInstance($model,'imagename');
+ 			$video = $model->videoname = UploadedFile::getInstance($model, 'videoname');
+ 			if(isset($image -> tempName) && in_array($image->extension, array('jpg','png','gif')))
+			{
+   				//$originFile = $image->saveAs(Yii::getAlias('@webroot/admin/images/postImage/').'/'.$image->name);	
+				//$thumbnFile = $image->saveAs(Yii::getAlias('@webroot/admin/images/postImage/thumImage').'/'.'thumb_'.$image->name);
+				$image->saveAs(Yii::getAlias('@webroot/admin/images/postImage/').'/'.$image->name);	
+				// generate a thumbnail image
+				/*Image::thumbnail('@webroot/admin/images/postImage/wallpaper2you.jpg', 120, 120)->save(Yii::getAlias('@webroot/admin/images/postImage/thumImage/thumb_wallpaper2you.jpg.jpg'), ['quality' => 50]);	*/
+			    $model->imagename=$image->name;
+			}
+			if(isset($video -> tempName) && in_array($video->extension, array('mp4')))
+			{
+				$video->saveAs(Yii::getAlias('@webroot/admin/videos/postVideo/').'/'.$video->name);	
+			    $model-> videoname = $video-> name;
+			}
+			 $model->userId=Yii::$app->user->id;
+ 			if($model->save())
+			{
+				$totalFollow = Yii::$app->db->createCommand( 'SELECT u.email, u.first_name, fw.LID, fw.FID FROM follower_details fw INNER JOIN user u ON fw.FID = u.id WHERE fw.LID ='.$id.' ')->queryAll();
+		foreach($totalFollow as $res)
+		{
+			$followerEmailid = $res['email'];		
+					$mail =  Yii::$app->mailer->compose()		  
+					 ->setFrom('admin@jijigram.com')
+					 //->setTo($emailInfo['LeaderInvite']['email'])
+					 ->setTo($followerEmailid)
+					 ->setSubject('Status Notification')
+					 ->setHtmlBody('
+					 <b>Hi Dear, Your leader has Posted a New Status. Please check on Your site.</b><br><br>
+					  <a href="https://www.jijigram.com/site/login">Please Click Here To Login</a>')
+					->send();
+				   if($mail)
+				   {		
+						Yii::$app->session->setFlash('success','Mail Sent Successfully.');
+				   }
+				   else
+				   {
+						Yii::$app->session->setFlash('error','Sorry!could not sent mail');
+				   }
+		}
+ 				Yii::$app->session->setFlash('success', "Status Uploaded Successfully");		
+			 return $this->redirect(['my-post']);	
+ 				 return $result;
+			}
+			else
+			{
+				echo 'Failed';
+			} 
+ 			Yii::$app->session->setFlash('success', "Post Created Successfully");		
+			  return $this->render('index', [
+                'model' => $model,
+				'dataReader' => $dataReader,
+				'dataProviders' => $dataProviders
+            ]);				
+        } else {
+            return $this->render('index', [
+                'model' => $model,
+				'dataReader' => $dataReader,
+				'dataProviders' => $dataProviders
+            ]);
+        }
+		}
+		else{
+			return $this->redirect(['profile/my-channels']);
+			}
+    }
 	 /**
      * Updates an existing User model.
      * If update is successful, the browser will be redirected to the 'view' page.
@@ -507,11 +595,24 @@ class ProfileController extends Controller
 		{
 			$data = Yii::$app->request->post();
 			$search = $data['search'];
-			$sql = 'SELECT * FROM `post` WHERE `message` LIKE "%'.$search.'%" OR `image_messge`LIKE "%'.$search.'%" OR `video_message` LIKE "%'.$search.'%"  OR `to_address` LIKE "%'.$search.'%"';
-			$dataReader = Yii::$app->db->createCommand($sql)->queryAll();
-			return $this->render('profile', [
+			$sql = 'SELECT * FROM `post` WHERE `message` LIKE "%'.$search.'%" OR `image_messge`LIKE "%'.$search.'%" OR `video_message` LIKE "%'.$search.'%"  OR `to_address` LIKE "%'.$search.'%" order by id desc';
+			//$dataReader = Yii::$app->db->createCommand($sql)->queryAll();
+			/*return $this->render('profile', [
 				'dataReader' => $dataReader
-            ]);
+            ]);*/
+			 $query  =  Post::findBySql($sql);
+			$dataProviders = new ActiveDataProvider([
+		'query' => $query,
+		 'pagination' => [
+			'pageSize' => 10,
+		],
+	]);   
+ $dataProviders->getCount();
+ $dataReader = $dataProviders->getModels();
+	return $this->render('profile', [
+				'dataReader' => $dataReader,
+				'dataProviders' => $dataProviders
+        ]);
 		}
 	}
 	public function actionNominateleaderSearch($query, $country, $category)
